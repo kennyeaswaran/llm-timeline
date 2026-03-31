@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&family=Manrope:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111418;
+    --border: #1e2330;
+    --text: #e8eaf0;
+    --muted: #5a6175;
+    --tooltip-bg: #181c24;
+    --openai: #10b981;
+    --anthropic: #f59e0b;
+    --google: #3b82f6;
+    --xai: #a855f7;
+    --meta: #ef4444;
+    --deepseek: #06b6d4;
+    --timeline-h: 2px;
+    --row-gap: 72px;
+    --dot-size: 10px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f8f7f4;
+      --surface: #ffffff;
+      --border: #d8d5ce;
+      --text: #1a1a1a;
+      --muted: #8a8780;
+      --tooltip-bg: #ffffff;
+      --openai: #0a8a60;
+      --anthropic: #c47d00;
+      --google: #1a5fbf;
+      --xai: #7c3aed;
+      --meta: #c0392b;
+      --deepseek: #0891b2;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ──────────────────────────────────────────── */
+  header {
+    padding: 48px 60px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+
+  .header-left h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .header-left h1 em {
+    font-style: italic;
+    color: var(--muted);
+  }
+
+  .header-left p {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 300;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── SHADE KEY ───────────────────────────────────────── */
+  .shade-key {
+    padding: 12px 24px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .shade-key-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .shade-swatch {
+    width: 22px; height: 10px;
+    border-radius: 3px;
+    background: var(--text);
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .shade-swatch--low  { opacity: 0.12; }
+  .shade-swatch--mid  { opacity: 0.25; }
+  .shade-swatch--high { opacity: 0.50; }
+
+  /* ── TIMELINE OUTER LAYOUT ───────────────────────────── */
+  .timeline-outer {
+    display: flex;
+    align-items: flex-start;
+    padding-left: 16px;
+  }
+
+  /* ── STICKY LABEL RAIL ───────────────────────────────── */
+  .label-rail {
+    flex-shrink: 0;
+    width: 72px;
+    position: sticky;
+    left: 16px;
+    z-index: 20;
+    background: var(--bg);
+    pointer-events: none;
+  }
+
+  .label-rail-item {
+    position: absolute;
+    left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+  }
+
+  .label-rail-item span {
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+
+  /* ── CANVAS WRAPPER ──────────────────────────────────── */
+  .canvas-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: 0 60px 60px 0;
+    flex: 1;
+    min-width: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    cursor: grab;
+  }
+  .canvas-wrap:active { cursor: grabbing; }
+  .canvas-wrap::-webkit-scrollbar { height: 6px; }
+  .canvas-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── TIMELINE SVG STAGE ───────────────────────────────── */
+  .timeline-stage {
+    position: relative;
+    /* width set by JS */
+    min-height: 540px;
+  }
+
+  /* ── YEAR RULER ──────────────────────────────────────── */
+  .year-ruler {
+    position: absolute;
+    top: 52px;
+    left: 0;
+    right: 0;
+    height: var(--timeline-h);
+    background: var(--border);
+  }
+
+  .year-mark {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .year-mark-line {
+    width: 1px;
+    height: 12px;
+    background: var(--border);
+  }
+
+  .year-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    margin-top: 10px;
+  }
+
+  /* ── ROWS ─────────────────────────────────────────────── */
+  .rows-area {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .org-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--row-gap);
+    transition: opacity 0.2s;
+  }
+
+  /* ── CAPABILITY BANDS ────────────────────────────────── */
+  .cap-band {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 0;
+    transition: opacity 0.3s;
+  }
+
+  .org-label {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    width: 60px;
+    text-align: right;
+    padding-right: 10px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .row-line {
+    position: absolute;
+    top: 50%;
+    height: 1px;
+    background: var(--border);
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    opacity: 0.4;
+  }
+
+  /* ── EVENTS ──────────────────────────────────────────── */
+  .event {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    z-index: 10;
+    transition: opacity 0.2s;
+  }
+
+  .event-dot {
+    width: var(--dot-size);
+    height: var(--dot-size);
+    border-radius: 50%;
+    border: 2px solid;
+    background: var(--bg);
+    position: relative;
+    z-index: 2;
+    transition: transform 0.15s, box-shadow 0.15s;
+    margin: 0 auto;
+  }
+
+  .event:hover .event-dot {
+    transform: scale(1.6);
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.06);
+  }
+
+  .event-label {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    pointer-events: none;
+    transition: color 0.15s;
+  }
+
+  .event-label.above { bottom: calc(100% + 4px); }
+  .event-label.below { top: calc(100% + 4px); }
+
+  .event:hover .event-label { color: var(--text); }
+
+  /* ── TOOLTIP ─────────────────────────────────────────── */
+  #tooltip {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    max-width: 260px;
+  }
+
+  #tooltip.visible { opacity: 1; }
+
+  .tooltip-inner {
+    background: var(--tooltip-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  }
+
+  .tooltip-org {
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .tooltip-name {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.1rem;
+    font-weight: 400;
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+
+  .tooltip-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .tooltip-desc {
+    font-size: 0.72rem;
+    color: #8a93a8;
+    line-height: 1.5;
+    font-weight: 300;
+  }
+
+  .event-landmark svg {
+    transition: transform 0.15s, filter 0.15s;
+  }
+  .event-landmark:hover svg {
+    transform: scale(1.5);
+  }
+
+  .tooltip-landmark {
+    margin-top: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fbbf24;
+  }
+
+  
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(239,68,68,0.08);
+    border-left: 2px solid #ef4444;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.65rem;
+    color: #f87171;
+    line-height: 1.4;
+  }
+
+  /* ── SCROLL HINT ─────────────────────────────────────── */
+  .scroll-hint {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 64px;
+    background: linear-gradient(to right, transparent, var(--bg));
+    pointer-events: none;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+    transition: opacity 0.4s;
+  }
+
+  .scroll-hint-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    animation: nudge 2s ease-in-out infinite;
+  }
+
+  .scroll-hint-arrow {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  @keyframes nudge {
+    0%, 100% { transform: translateX(0); }
+    50%       { transform: translateX(4px); }
+  }
+
+  .scroll-hint.hidden { opacity: 0; pointer-events: none; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>The LLM Race <em>— A Visual History</em></h1>
+    <p>Jun 2017 – Mar 2026 · Every major model release</p>
+  </div>
+</header>
+
+<div class="shade-key">
+  <div class="shade-key-item"><span class="shade-swatch shade-swatch--low"></span>Base model</div>
+  <div class="shade-key-item"><span class="shade-swatch shade-swatch--mid"></span>Chatbot</div>
+  <div class="shade-key-item"><span class="shade-swatch shade-swatch--high"></span>Reasoning</div>
+</div>
+
+<div class="timeline-outer" style="position:relative">
+  <div class="label-rail" id="labelRail"></div>
+  <div class="canvas-wrap" id="canvasWrap">
+    <div class="timeline-stage" id="stage"></div>
+  </div>
+  <div class="scroll-hint" id="scrollHint">
+    <div class="scroll-hint-icon">
+      <span class="scroll-hint-arrow">›</span>
+      <span>scroll</span>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"><div class="tooltip-inner">
+  <div class="tooltip-org" id="tt-org"></div>
+  <div class="tooltip-name" id="tt-name"></div>
+  <div class="tooltip-date" id="tt-date"></div>
+  <div class="tooltip-desc" id="tt-desc"></div>
+  <div class="tooltip-landmark" id="tt-landmark" style="display:none">★ Landmark release</div>
+  <div class="tooltip-correction" id="tt-correction" style="display:none"></div>
+</div></div>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────
+const ORGS = ['openai','anthropic','google','xai','meta','deepseek'];
+const ORG_LABELS = { openai:'OpenAI', anthropic:'Anthropic', google:'Google', xai:'xAI', meta:'Meta', deepseek:'DeepSeek' };
+const ORG_COLORS = { openai:'#10b981', anthropic:'#f59e0b', google:'#3b82f6', xai:'#a855f7', meta:'#ef4444', deepseek:'#06b6d4' };
+
+// era: 0=base/research, 1=chatbot, 2=reasoning  |  landmark:true = star marker
+const EVENTS = [
+  // ── Google / DeepMind ──
+  { org:'google', era:-1, date:'2017-06', name:'Attention Is All You Need', short:'Transformer', landmark:true,  desc:'The foundational paper by Vaswani et al. that introduced the Transformer architecture — the backbone of every major LLM since.' },
+  { org:'google', era:0, date:'2018-10', name:'BERT',        short:'BERT',        desc:'Bidirectional Encoder Representations from Transformers. Set new records across 11 NLP tasks and established pre-training + fine-tuning as the dominant paradigm.' },
+  { org:'google', era:0, date:'2020-01', name:'T5',          short:'T5',          desc:'Text-to-Text Transfer Transformer. Reframed all NLP tasks as text generation, achieving state-of-the-art on multiple benchmarks.' },
+  { org:'google', era:0, date:'2021-05', name:'LaMDA',       short:'LaMDA',       desc:"Language Model for Dialogue Applications. Google's conversational AI trained on dialogue data, later the basis for Bard." },
+  { org:'google', era:0, date:'2022-04', name:'PaLM',        short:'PaLM',        desc:'Pathways Language Model — 540B parameters. Demonstrated strong few-shot performance and introduced chain-of-thought prompting at scale.' },
+  { org:'google', era:1, date:'2023-03', name:'Bard',        short:'Bard',        desc:"Google's public chatbot, initially powered by LaMDA, later upgraded to Gemini. Launched in response to ChatGPT." },
+  { org:'google', era:1, date:'2023-12', name:'Gemini 1.0',  short:'Gemini 1.0',   desc:"Google's first natively multimodal model family (Ultra, Pro, Nano). Designed to be trained from the ground up with multimodality." },
+  { org:'google', era:1, date:'2024-02', name:'Gemini 1.5',  short:'Gemini 1.5',  desc:'Introduced a 1M-token context window using a mixture-of-experts architecture. Long-context understanding was a major breakthrough.' },
+  { org:'google', era:1, date:'2024-05', name:'Gemini Flash', short:'Gemini Flash', desc:'Gemini 1.5 Flash — a lightweight, fast, cost-efficient model for high-volume tasks while maintaining strong capability.' },
+  { org:'google', era:1, date:'2024-12', name:'Gemini 2.0 Flash', short:'Gemini 2.0', desc:'Announced December 2024 (experimental), GA February 2025. Introduced native image/audio generation and improved agentic capabilities.' },
+  { org:'google', era:2, date:'2025-03', name:'Gemini 2.5 Pro', short:'Gemini 2.5 Pro', desc:"Released March 25, 2025. Google's first true chain-of-thought reasoning model. Set new standards in coding, math, and multimodal reasoning." },
+  { org:'google', era:2, date:'2025-11', name:'Gemini 3 Pro', short:'Gemini 3 Pro', desc:'Released November 18, 2025. First model to surpass 1500 Elo on LMArena. Deployed day-one to 2B+ Google Search and Gemini App users.' },
+
+  // ── OpenAI ──
+  { org:'openai', era:0, date:'2018-06', name:'GPT-1',       short:'GPT-1',       desc:'The first Generative Pre-trained Transformer. Showed that unsupervised pre-training + supervised fine-tuning could outperform task-specific models.' },
+  { org:'openai', era:0, date:'2019-02', name:'GPT-2',       short:'GPT-2',       desc:'1.5B parameters. OpenAI initially withheld the full model citing misuse risks. Its realistic text generation sparked public debate about AI safety.' },
+  { org:'openai', era:0, date:'2020-06', name:'GPT-3',       short:'GPT-3',       landmark:true,  desc:'175B parameters. Demonstrated remarkable few-shot learning. Sparked the modern LLM era and led to the OpenAI API.' },
+  { org:'openai', era:0, date:'2021-03', name:'Codex',       short:'Codex',       desc:'Fine-tuned GPT-3 on code. Powered GitHub Copilot and proved that LLMs could write production-quality software.' },
+  { org:'openai', era:0, date:'2022-02', name:'InstructGPT', short:'InstructGPT', desc:'Applied RLHF to GPT-3. The direct precursor to ChatGPT — the key insight that alignment via human feedback matters enormously.' },
+  { org:'openai', era:1, date:'2022-11', name:'ChatGPT',     short:'ChatGPT',     landmark:true,  desc:'Based on GPT-3.5. Reached 1 million users in 5 days, 100 million in 2 months. Arguably the most impactful AI product launch in history.' },
+  { org:'openai', era:1, date:'2023-03', name:'GPT-4',       short:'GPT-4',       landmark:true,  desc:'Multimodal (text + image). Passed bar exams in the top percentile. Introduced a new frontier of capability and reasoning.' },
+  { org:'openai', era:1, date:'2023-11', name:'GPT-4 Turbo', short:'GPT-4T',      desc:'128K context window, updated knowledge, lower cost. Major upgrade to the GPT-4 generation.' },
+  { org:'openai', era:1, date:'2024-05', name:'GPT-4o',      short:'GPT-4o',      landmark:true,  desc:'Omni model — text, audio, and vision trained end-to-end together. Faster and cheaper than GPT-4 Turbo. Became the default ChatGPT model.' },
+  { org:'openai', era:2, date:'2024-09', name:'o1 preview',  short:'o1',          landmark:true,  desc:"OpenAI's first reasoning model. Used chain-of-thought thinking before responding. Set new standards on math and science benchmarks." },
+  { org:'openai', era:2, date:'2025-01', name:'o3-mini',     short:'o3-mini',     desc:'Released January 31, 2025. A compact, efficient reasoning model optimized for STEM tasks — coding, math, and science. Available to all ChatGPT users.' },
+  { org:'openai', era:2, date:'2025-04-14', name:'GPT-4.1', short:'GPT-4.1',      desc:'Released April 14, 2025 (API-first). 1M context window, strong coding and instruction-following. Three variants: 4.1, 4.1 mini, 4.1 nano.' },
+  { org:'openai', era:2, date:'2025-04-16', name:'o3 + o4-mini', short:'o3/o4-mini', desc:"Released April 16, 2025. o3 is a full reasoning model; o4-mini offers cheaper high-throughput reasoning. Both support agentic tool use within reasoning chains." },
+  { org:'openai', era:2, date:'2025-08', name:'GPT-5',       short:'GPT-5',       landmark:true,  desc:'Released August 7, 2025. Unified reasoning + multimodal model. Replaced GPT-4o, o3, and GPT-4.1 as the ChatGPT default. ~45% fewer factual errors than GPT-4o.' },
+  { org:'openai', era:2, date:'2025-12', name:'GPT-5.2',     short:'GPT-5.2',     desc:'Released December 11, 2025. Improved complex reasoning and professional task performance. Introduced Instant, Thinking, and Pro variants. Knowledge cutoff August 2025.' },
+  { org:'openai', era:2, date:'2026-02', name:'GPT-5.3',     short:'GPT-5.3',     desc:'Released February 2026. Continued iteration on the GPT-5 series with improvements to coding, agentic workflows, and response quality.' },
+
+  // ── Anthropic ──
+  { org:'anthropic', era:-1, date:'2021-01', name:'Anthropic Founded', short:'Founded', desc:'Spun out of OpenAI by Dario Amodei, Daniela Amodei, and others. Founded with a safety-first mission and Constitutional AI as a core research direction.' },
+  { org:'anthropic', era:1, date:'2023-03', name:'Claude 1',          short:'Claude 1',   desc:"Anthropic's first public model. Trained using Constitutional AI and RLHF. Positioned as a safe, helpful, and honest alternative." },
+  { org:'anthropic', era:1, date:'2023-07', name:'Claude 2',          short:'Claude 2',   desc:'100K context window — a major leap at the time. Improved coding and reasoning. Broadly available via API and Claude.ai.' },
+  { org:'anthropic', era:1, date:'2024-03', name:'Claude 3',          short:'Claude 3',   desc:'Three-tier family: Haiku (fast), Sonnet (balanced), Opus (powerful). Set new benchmarks and established Anthropic as a serious frontier lab.' },
+  { org:'anthropic', era:1, date:'2024-06', name:'Claude 3.5 Sonnet', short:'Claude 3.5', desc:'A cheaper Sonnet that outperformed the larger Opus. Changed how developers thought about model selection. Introduced Artifacts in Claude.ai.' },
+  { org:'anthropic', era:1, date:'2024-10', name:'Claude 3.5 Haiku',  short:'3.5 Haiku',  desc:'Fast, capable small model. Released alongside computer use in public beta — allowing Claude to interact with desktop environments.' },
+  { org:'anthropic', era:2, date:'2025-02', name:'Claude 3.7 Sonnet', short:'Claude 3.7', desc:"Released February 24, 2025. Anthropic's first reasoning model — introduced extended thinking (hybrid chain-of-thought). Major gains on math, science, and coding." },
+  { org:'anthropic', era:2, date:'2025-05', name:'Claude Sonnet 4 + Opus 4', short:'Claude 4', desc:'Released May 22, 2025. New generation with extended thinking, 200K context. Sonnet 4 became the default; Opus 4 the most capable Anthropic model to date.' },
+  { org:'anthropic', era:2, date:'2025-09', name:'Claude Sonnet 4.5', short:'Sonnet 4.5', desc:'Released September 29, 2025. 77.2% on SWE-bench Verified — best-in-class for agents, coding, and computer use at launch.' },
+  { org:'anthropic', era:2, date:'2025-11', name:'Claude Opus 4.5',   short:'Opus 4.5',   desc:'Released November 24, 2025. 67% price cut vs. Opus 4. Improved coding and workplace tasks. Introduced Infinite Chats (no context window limit errors).' },
+  { org:'anthropic', era:2, date:'2026-02', name:'Sonnet 4.6 + Opus 4.6', short:'Claude 4.6', desc:'Opus 4.6 Feb 5, Sonnet 4.6 Feb 17, 2026. 1M context window, adaptive thinking, agent team capabilities. Sonnet 4.6 preferred over Opus 4.5 by 70% of devs in coding evals.' },
+
+  // ── xAI ──
+  { org:'xai', era:1, date:'2023-11', name:'Grok-1',   short:'Grok-1',   desc:"Launched by Elon Musk's xAI. Built into X (Twitter) platform. Marketed as an AI with fewer content restrictions and a rebellious streak." },
+  { org:'xai', era:1, date:'2024-08', name:'Grok-1.5', short:'Grok-1.5', desc:'Improved reasoning with a 128K context window. Still positioned as an X-exclusive assistant.' },
+  { org:'xai', era:1, date:'2024-11', name:'Grok-2',   short:'Grok-2',   desc:'Significant capability upgrade. First Grok model to seriously compete on major benchmarks alongside GPT-4o and Claude.' },
+  { org:'xai', era:2, date:'2025-02', name:'Grok-3',   short:'Grok-3',   desc:"Released February 2025. xAI's first model with strong chain-of-thought reasoning, trained on a massive GPU cluster. Competitive with top frontier models." },
+  { org:'xai', era:2, date:'2025-07', name:'Grok-4',   short:'Grok-4',   desc:'Released July 9, 2025. xAI claimed it outperforms all rivals on benchmarks. Introduced SuperGrok Heavy tier at $300/month.' },
+  { org:'xai', era:2, date:'2025-11', name:'Grok-4.1', short:'Grok-4.1', desc:'Released November 17, 2025. Focused on emotional intelligence, personality, and conversational quality. Topped LMArena Text Arena with 1483 Elo in Thinking mode.' },
+
+  // ── Meta ──
+  { org:'meta', era:1, date:'2023-02', name:'Llama 1',   short:'Llama 1',   landmark:true, desc:"Meta's first open-weight LLM family. Weights leaked, igniting the open-source LLM revolution and spawning hundreds of fine-tuned variants." },
+  { org:'meta', era:1, date:'2023-07', name:'Llama 2',   short:'Llama 2',   desc:'Officially open-sourced with a commercial license. Made high-quality base models freely available for research and business use.' },
+  { org:'meta', era:1, date:'2024-04', name:'Llama 3',   short:'Llama 3',   desc:'Dramatically improved over Llama 2. 8B and 70B versions competitive with many closed models. Cemented Meta as the open-source leader.' },
+  { org:'meta', era:1, date:'2024-07', name:'Llama 3.1', short:'Llama 3.1', desc:"405B parameter model — Meta's frontier entry. 128K context window. Claimed to rival GPT-4 on key benchmarks while remaining open." },
+  { org:'meta', era:1, date:'2024-09', name:'Llama 3.2', short:'Llama 3.2', desc:'Added vision capabilities (multimodal). Smaller models (1B, 3B) designed for on-device use. Continued to push open-source boundaries.' },
+  { org:'meta', era:1, date:'2024-12', name:'Llama 3.3', short:'Llama 3.3', desc:'A 70B model matching the performance of the larger Llama 3.1 405B at a fraction of the compute cost — major efficiency gains.' },
+  { org:'meta', era:2, date:'2025-04', name:'Llama 4',   short:'Llama 4',   desc:"Released April 2025. Mixture-of-experts architecture with reasoning capabilities. A major generational leap in Meta's open model lineup." },
+
+  // ── DeepSeek ──
+  { org:'deepseek', era:1, date:'2024-12', name:'DeepSeek V3',    short:'V3',      landmark:true, desc:'Released December 2024. 671B MoE parameters, only 37B activated per token. Trained for ~$6M — shocked the industry with its efficiency vs. capability.' },
+  { org:'deepseek', era:2, date:'2025-01', name:'DeepSeek R1',    short:'R1',      landmark:true, desc:"Released January 20, 2025. First open-weight reasoning model rivaling OpenAI o1. Became the #1 app on US iOS App Store within days, sending Nvidia stock down 18%." },
+  { org:'deepseek', era:2, date:'2025-03', name:'DeepSeek V3-0324', short:'V3-0324', desc:'Released March 24, 2025. Improved post-training with RL techniques from R1. Better reasoning, coding, and tool use. Outperformed GPT-4.5 on several benchmarks.' },
+  { org:'deepseek', era:2, date:'2025-05', name:'DeepSeek R1-0528', short:'R1-0528', desc:'Released May 28, 2025. Major R1 upgrade — reasoning depth nearly doubled (23K vs 12K tokens per AIME problem). Hallucination reduced 45-50%.' },
+  { org:'deepseek', era:2, date:'2025-08', name:'DeepSeek V3.1',  short:'V3.1',    desc:'Released August 2025. Hybrid model: can toggle between thinking and non-thinking mode. Optimized for domestic AI accelerators.' },
+  { org:'deepseek', era:2, date:'2025-09', name:'DeepSeek V3.2',  short:'V3.2',    desc:'Released September 29, 2025. Introduced DeepSeek Sparse Attention for greater efficiency. Gold-medal performance on IMO, CMO, ICPC, and IOI 2025.' },
+];
+
+// ── LAYOUT CONSTANTS ─────────────────────────────────────────────────
+const PX_PER_MONTH = 80;
+const LEFT_PAD = 16;
+const TOP_PAD = 36;
+const ROW_H = 72;
+
+function dateToMs(str) {
+  const parts = str.split('-');
+  const y = parseInt(parts[0]);
+  const m = parts[1] ? parseInt(parts[1]) : 1;
+  const d = parts[2] ? parseInt(parts[2]) : 1;
+  return new Date(y, m-1, d).getTime();
+}
+
+const eras = [
+  { label:'Pre-ChatGPT', start:'2017-06', end:'2022-11' },
+  { label:'Chatbot Era',  start:'2022-11', end:'2024-09' },
+  { label:'Reasoning Era',start:'2024-09', end:'2026-03' },
+];
+
+function getEraRange(eraIdx) {
+  if (eraIdx === 'all') return { start: eras[0].start, end: eras[2].end };
+  return eras[eraIdx];
+}
+
+// ── STAR PATH HELPER ──────────────────────────────────────────────────
+// Returns an SVG <polygon> points string for a 5-point star centred at (cx,cy)
+function starPoints(cx, cy, outerR, innerR) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = (Math.PI / 5) * i - Math.PI / 2;
+    pts.push((cx + r * Math.cos(angle)).toFixed(2) + ',' + (cy + r * Math.sin(angle)).toFixed(2));
+  }
+  return pts.join(' ');
+}
+
+// ── STATE ────────────────────────────────────────────────────────────
+const currentEra = 'all';
+
+// ── RENDER ───────────────────────────────────────────────────────────
+function render() {
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+
+  // ── LABEL RAIL ──────────────────────────────────────────────────────
+  const rail = document.getElementById('labelRail');
+  rail.innerHTML = '';
+
+
+  const eraRange = getEraRange(currentEra);
+  const startMs = dateToMs(eraRange.start);
+  const endMs   = dateToMs(eraRange.end);
+  const totalW  = Math.ceil((endMs - startMs) / (1000*60*60*24*30.44) * PX_PER_MONTH) + LEFT_PAD + 40;
+
+  stage.style.width    = totalW + 'px';
+  const stageH = TOP_PAD + (ORGS.length + 1) * ROW_H;
+  stage.style.minHeight = stageH + 'px';
+  rail.style.height = stageH + 'px';
+
+  function xFor(dateStr) {
+    const ms = dateToMs(dateStr);
+    return LEFT_PAD + (ms - startMs) / (endMs - startMs) * (totalW - LEFT_PAD - 40);
+  }
+
+  // Year ruler
+  const ruler = document.createElement('div');
+  ruler.className = 'year-ruler';
+  ruler.style.top = (TOP_PAD + ROW_H / 2) + 'px';
+  stage.appendChild(ruler);
+
+  // Year marks
+  const startYear = new Date(startMs).getFullYear();
+  const endYear   = new Date(endMs).getFullYear() + 1;
+  for (let y = startYear; y <= endYear; y++) {
+    for (let m = 0; m < 12; m += 6) {
+      const d  = `${y}-${String(m+1).padStart(2,'0')}`;
+      const ms = dateToMs(d);
+      if (ms < startMs || ms > endMs) continue;
+      const x    = xFor(d);
+      const mark = document.createElement('div');
+      mark.className = 'year-mark';
+      mark.style.left = x + 'px';
+      mark.style.top  = (TOP_PAD + ROW_H / 2) + 'px';
+      mark.innerHTML  = `<div class="year-mark-line"></div><div class="year-label">${m === 0 ? y : ''}</div>`;
+      stage.appendChild(mark);
+    }
+  }
+
+  // Rows + events — always show all orgs
+  ORGS.forEach((org, rowIdx) => {
+    const rowY = TOP_PAD + ROW_H + rowIdx * ROW_H;
+
+    const orgRow = document.createElement('div');
+    orgRow.className = 'org-row';
+    orgRow.style.top = rowY + 'px';
+    orgRow.dataset.org = org;
+
+    // Add label to sticky rail
+    const railItem = document.createElement('div');
+    railItem.className = 'label-rail-item';
+    railItem.dataset.org = org;
+    railItem.style.top    = rowY + 'px';
+    railItem.style.height = ROW_H + 'px';
+    const railSpan = document.createElement('span');
+    railSpan.style.color = ORG_COLORS[org];
+    railSpan.textContent = ORG_LABELS[org];
+    railItem.appendChild(railSpan);
+    rail.appendChild(railItem);
+
+    const line = document.createElement('div');
+    line.className = 'row-line';
+    orgRow.appendChild(line);
+
+    stage.appendChild(orgRow);
+
+    // ── CAPABILITY BANDS ─────────────────────────────────────────────
+    const eraToLevel = { '-1': 0, 0: 1, 1: 2, 2: 3 };
+    const levelOpacity = { 1: 0.10, 2: 0.20, 3: 0.34 };
+
+    const allOrgEvents = EVENTS
+      .filter(e => e.org === org)
+      .sort((a, b) => dateToMs(a.date) - dateToMs(b.date));
+
+    const transitions = [];
+    let maxLevel = 0;
+    allOrgEvents.forEach(ev => {
+      const lvl = eraToLevel[ev.era] ?? 1;
+      if (lvl > maxLevel) {
+        maxLevel = lvl;
+        transitions.push({ ms: dateToMs(ev.date), level: maxLevel });
+      }
+    });
+
+    transitions.forEach((tr, ti) => {
+      const bandStart = Math.max(tr.ms, startMs);
+      const bandEnd   = ti + 1 < transitions.length ? Math.min(transitions[ti+1].ms, endMs) : endMs;
+      if (bandEnd <= bandStart) return;
+      const x1 = LEFT_PAD + (bandStart - startMs) / (endMs - startMs) * (totalW - LEFT_PAD - 40);
+      const x2 = LEFT_PAD + (bandEnd   - startMs) / (endMs - startMs) * (totalW - LEFT_PAD - 40);
+      const band = document.createElement('div');
+      band.className = 'cap-band';
+      band.style.left       = x1 + 'px';
+      band.style.width      = (x2 - x1) + 'px';
+      band.style.background = ORG_COLORS[org];
+      band.style.opacity    = levelOpacity[tr.level];
+      orgRow.appendChild(band);
+    });
+
+    // ── EVENTS ───────────────────────────────────────────────────────
+    const orgEvents = EVENTS.filter(e => {
+      if (e.org !== org) return false;
+      const ms = dateToMs(e.date);
+      return ms >= startMs && ms <= endMs;
+    });
+
+    const placed = [];
+    orgEvents.forEach((ev, i) => {
+      const x  = xFor(ev.date);
+      const el = document.createElement('div');
+      el.className = 'event';
+      el.style.left = x + 'px';
+      el.style.top  = '50%';
+
+      const tooClose = placed.some(px => Math.abs(px - x) < 55);
+      const above    = i % 2 === 0 && !tooClose;
+      placed.push(x);
+
+      const color = ORG_COLORS[org];
+
+      if (ev.landmark) {
+        // ── Star marker ──
+        const SIZE = 20;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width',  SIZE);
+        svg.setAttribute('height', SIZE);
+        svg.setAttribute('viewBox', `0 0 ${SIZE} ${SIZE}`);
+        svg.style.display  = 'block';
+        svg.style.margin   = '0 auto';
+        svg.style.overflow = 'visible';
+        svg.style.filter   = `drop-shadow(0 0 4px ${color}55)`;
+        const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        poly.setAttribute('points', starPoints(SIZE/2, SIZE/2, SIZE/2 - 1, (SIZE/2 - 1) * 0.42));
+        poly.setAttribute('fill',   color);
+        poly.setAttribute('stroke', 'none');
+        svg.appendChild(poly);
+        el.appendChild(svg);
+        el.classList.add('event-landmark');
+      } else {
+        // ── Circle marker ──
+        const dot = document.createElement('div');
+        dot.className = 'event-dot';
+        dot.style.borderColor = color;
+        el.appendChild(dot);
+      }
+
+      const lbl2 = document.createElement('div');
+      lbl2.className = `event-label ${above ? 'above' : 'below'}`;
+      lbl2.textContent = ev.short;
+      el.appendChild(lbl2);
+
+      el.addEventListener('mouseenter', showTooltip.bind(null, ev, color));
+      el.addEventListener('mouseleave', hideTooltip);
+      orgRow.appendChild(el);
+    });
+  });
+}
+
+// ── TOOLTIP ──────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(ev, color, e) {
+  document.getElementById('tt-org').textContent  = ORG_LABELS[ev.org];
+  document.getElementById('tt-org').style.color  = color;
+  document.getElementById('tt-name').textContent = ev.name;
+  const dateObj = new Date(dateToMs(ev.date));
+  const parts   = ev.date.split('-');
+  document.getElementById('tt-date').textContent = parts.length === 3
+    ? dateObj.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})
+    : dateObj.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+  document.getElementById('tt-desc').textContent = ev.desc;
+  document.getElementById('tt-landmark').style.display = ev.landmark ? '' : 'none';
+  document.getElementById('tt-correction').style.display = 'none';
+  tooltip.classList.add('visible');
+  positionTooltip(e);
+}
+
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+function positionTooltip(e) {
+  const tW = 264, tH = 180;
+  let left = e.clientX + 16, top = e.clientY + 16;
+  if (left + tW > window.innerWidth  - 10) left = e.clientX - tW - 10;
+  if (top  + tH > window.innerHeight - 10) top  = e.clientY - tH - 10;
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top  + 'px';
+}
+
+document.addEventListener('mousemove', e => {
+  if (tooltip.classList.contains('visible')) positionTooltip(e);
+});
+
+// ── LEGEND TOGGLE removed ───────────────────────────────────────────
+
+// ── DRAG SCROLL ──────────────────────────────────────────────────────
+const wrap = document.getElementById('canvasWrap');
+let isDragging = false, startX, scrollLeft;
+wrap.addEventListener('mousedown', e => { isDragging = true; startX = e.pageX - wrap.offsetLeft; scrollLeft = wrap.scrollLeft; });
+wrap.addEventListener('mouseleave', () => isDragging = false);
+wrap.addEventListener('mouseup',    () => isDragging = false);
+wrap.addEventListener('mousemove',  e => {
+  if (!isDragging) return;
+  e.preventDefault();
+  wrap.scrollLeft = scrollLeft - (e.pageX - wrap.offsetLeft - startX);
+});
+
+// ── SCROLL HINT ──────────────────────────────────────────────────────
+const scrollHint = document.getElementById('scrollHint');
+const canvasWrapEl = document.getElementById('canvasWrap');
+canvasWrapEl.addEventListener('scroll', () => {
+  if (canvasWrapEl.scrollLeft > 40) scrollHint.classList.add('hidden');
+  else scrollHint.classList.remove('hidden');
+}, { passive: true });
+
+// ── INIT ─────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
